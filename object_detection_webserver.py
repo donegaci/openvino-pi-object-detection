@@ -13,6 +13,8 @@ import threading
 from flask import Response
 from flask import Flask
 from flask import render_template
+from datetime import datetime
+from slackmessage import send_slack_message
 
 # initialize the output frame and a lock used to ensure thread-safe
 # exchanges of the output frames (useful for multiple browsers/tabs
@@ -25,7 +27,7 @@ app = Flask(__name__)
 
 # initialize the video stream and allow the camera sensor to
 # warmup
-vs = VideoStream(usePiCamera=True).start()
+vs = VideoStream(usePiCamera=True, resolution=(960,720)).start()
 time.sleep(2.0)
 
 
@@ -59,8 +61,8 @@ def perfrom_object_detection(prototxt, model, confidence_thres):
 	while True:
 		# grab the frame from the threaded video stream and resize it
 		# to have a maximum width of 400 pixels
-		frame = vs.read()
-		frame = imutils.resize(frame, width=400)
+		original_frame = vs.read()
+		frame = imutils.resize(original_frame, width=400)
 
 		# grab the frame dimensions and convert it to a blob
 		(h, w) = frame.shape[:2]
@@ -95,15 +97,17 @@ def perfrom_object_detection(prototxt, model, confidence_thres):
 				y = startY - 15 if startY - 15 > 15 else startY + 15
 				cv2.putText(frame, label, (startX, y),
 					cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+
+				if CLASSES[idx] in ["person", "bicycle", "car","motorbike"]:
+					now = datetime.now()
+					filename = "saved_images/" + now.strftime(r"%a-%d-%m-%Y--%H-%M-%S--") + CLASSES[idx] + ".jpg"
+					status = cv2.imwrite(filename, original_frame)
+					send_slack_message(filename)
 			
 		# acquire the lock, set the output frame, and release the
 		# lock
 		with lock:
 			outputFrame = frame.copy()
-		
-		# 	# show the output frame
-		# cv2.imshow("Frame", frame)
-		# key = cv2.waitKey(1) & 0xFF
 
 
 def generate():
@@ -147,7 +151,7 @@ if __name__ == '__main__':
 		help="path to Caffe 'deploy' prototxt file")
 	ap.add_argument("-m", "--model", required=True,
 		help="path to Caffe pre-trained model")
-	ap.add_argument("-c", "--confidence", type=float, default=0.35,
+	ap.add_argument("-c", "--confidence", type=float, default=0.45,
 		help="minimum probability to filter weak detections")
 	ap.add_argument("-i", "--ip", type=str, required=True,
 		help="ip address of the device")
