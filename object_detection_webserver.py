@@ -15,6 +15,7 @@ from flask import Flask
 from flask import render_template
 from datetime import datetime
 from slackmessage import send_slack_message
+import os
 
 # initialize the output frame and a lock used to ensure thread-safe
 # exchanges of the output frames (useful for multiple browsers/tabs
@@ -27,7 +28,7 @@ app = Flask(__name__)
 
 # initialize the video stream and allow the camera sensor to
 # warmup
-vs = VideoStream(usePiCamera=True, resolution=(960, 720)).start()
+vs = VideoStream(usePiCamera=True, resolution=(960,720)).start()
 time.sleep(2.0)
 
 
@@ -35,7 +36,7 @@ time.sleep(2.0)
 def index():
     # return the rendered template
     return render_template("index.html")
-
+    
 
 def perfrom_object_detection(prototxt, model, confidence_thres):
 
@@ -46,9 +47,9 @@ def perfrom_object_detection(prototxt, model, confidence_thres):
     # initialize the list of class labels MobileNet SSD was trained to
     # detect, then generate a set of bounding box colors for each class
     CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
-               "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
-               "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
-               "sofa", "train", "tvmonitor"]
+        "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+        "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
+        "sofa", "train", "tvmonitor"]
     COLORS = np.random.uniform(0, 255, size=(len(CLASSES), 3))
 
     # load our serialized model from disk
@@ -91,24 +92,26 @@ def perfrom_object_detection(prototxt, model, confidence_thres):
 
                 # draw the prediction on the frame
                 label = "{}: {:.2f}%".format(CLASSES[idx],
-                                             confidence * 100)
+                    confidence * 100)
                 cv2.rectangle(frame, (startX, startY), (endX, endY),
-                              COLORS[idx], 2)
+                    COLORS[idx], 2)
                 y = startY - 15 if startY - 15 > 15 else startY + 15
                 cv2.putText(frame, label, (startX, y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
 
                 # save image and send slack message with image
                 if CLASSES[idx] in ["person", "bicycle", "car", "motorbike"]:
-                    filename = "saved_images/" + \
-                        now.strftime(r"%a-%d-%m-%Y--%H-%M-%S--") + CLASSES[idx] + ".jpg"
+                    now = datetime.now()
+                    filename = "saved_images/" + now.strftime(r"%a-%d-%m-%Y--%H-%M-%S--") + CLASSES[idx] + ".jpg"
                     _ = cv2.imwrite(filename, original_frame)
-                    send_slack_message(filename)
+                    newpid = os.fork()
+                    if newpid == 0:
+                        send_slack_message(filename)      
 
-    # acquire the lock, set the output frame, and release the
-    # lock
-    with lock:
-        outputFrame = frame.copy()
+        # acquire the lock, set the output frame, and release the
+        # lock
+        with lock:
+            outputFrame = frame.copy()
 
 
 def generate():
@@ -132,8 +135,8 @@ def generate():
                 continue
 
         # yield the output frame in the byte format
-        yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' +
-              bytearray(encodedImage) + b'\r\n')
+        yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + 
+            bytearray(encodedImage) + b'\r\n')
 
 
 @app.route("/video_feed")
@@ -141,7 +144,7 @@ def video_feed():
     # return the response generated along with the specific media
     # type (mime type)
     return Response(generate(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
+        mimetype = "multipart/x-mixed-replace; boundary=frame")
 
 
 if __name__ == '__main__':
@@ -149,17 +152,17 @@ if __name__ == '__main__':
     # construct the argument parse and parse the arguments
     ap = argparse.ArgumentParser()
     ap.add_argument("-p", "--prototxt", required=True,
-                    help="path to Caffe 'deploy' prototxt file")
+        help="path to Caffe 'deploy' prototxt file")
     ap.add_argument("-m", "--model", required=True,
-                    help="path to Caffe pre-trained model")
-    ap.add_argument("-c", "--confidence", type=float, default=0.45,
-                    help="minimum probability to filter weak detections")
+        help="path to Caffe pre-trained model")
+    ap.add_argument("-c", "--confidence", type=float, default=0.5,
+        help="minimum probability to filter weak detections")
     ap.add_argument("-i", "--ip", type=str, required=True,
-                    help="ip address of the device")
+        help="ip address of the device")
     ap.add_argument("-o", "--port", type=int, required=True,
-                    help="ephemeral port number of the server (1024 to 65535)")
+        help="ephemeral port number of the server (1024 to 65535)")
     args = vars(ap.parse_args())
-
+    
     # perfrom_object_detection(args["prototxt"], args["model"], args["confidence"])
     # start a thread that will perform object detection
     t = threading.Thread(target=perfrom_object_detection, args=(
@@ -171,7 +174,7 @@ if __name__ == '__main__':
 
     # start the flask app
     app.run(host=args["ip"], port=args["port"], debug=True,
-            threaded=True, use_reloader=False)
+        threaded=True, use_reloader=False)
 
 
 vs.stop()
